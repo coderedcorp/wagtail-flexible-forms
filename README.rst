@@ -1,3 +1,10 @@
+This is a fork containing the code distributed by coderedcms.
+The purpose of this fork is to contribute back changes as we fix bugs
+and provide quality improvements. Original README below.
+
+------------------------------------------------------
+
+
 Wagtail flexible forms
 ======================
 
