@@ -685,6 +685,10 @@ class StreamFormMixin:
                 return Submission(user=request.user, page=self, form_data='[]')
             return user_submission
 
+        # Ensures Anonymous Users have a unique session key.
+        if not request.session.session_key:
+            request.session.create()
+
         user_submission = Submission.objects.filter(
             session_key=request.session.session_key, page=self
         ).order_by('-pk').first()
