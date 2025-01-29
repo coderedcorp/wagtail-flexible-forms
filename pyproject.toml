@@ -28,7 +28,7 @@ dependencies = [
 ]
 description = "Wagtail StreamField-based form builder."
 dynamic = ["version"]
-license = {file = "LICENSE"}
+license = {file = "LICENSE.txt"}
 name = "wagtail-flexible-forms"
 readme = "README.md"
 requires-python = ">=3.8"

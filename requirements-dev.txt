@@ -1,0 +1,15 @@
+# Install package locally.
+-e .
+
+# Dev and build tooling.
+build
+codespell
+mypy
+pytest
+pytest-cov
+pytest-django
+ruff
+setuptools>=65.5
+sphinx
+sphinx-wagtail-theme
+twine
