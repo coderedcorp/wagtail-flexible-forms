@@ -1,0 +1,80 @@
+# -- PACKAGE INFO ---------------------
+
+[build-system]
+requires = ["setuptools >= 65.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+authors = [
+    {name = "CodeRed LLC", email = "info@coderedcorp.com"},
+    {name = "Bertrand Bordage"},
+]
+classifiers = [
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: BSD License",
+    "Natural Language :: English",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Framework :: Django",
+    "Framework :: Wagtail",
+    "Framework :: Wagtail :: 3",
+    "Framework :: Wagtail :: 4",
+    "Framework :: Wagtail :: 5",
+    "Framework :: Wagtail :: 6",
+]
+dependencies = [
+    "wagtail>=3.0,<7",
+]
+description = "Wagtail StreamField-based form builder."
+dynamic = ["version"]
+license = {file = "LICENSE"}
+name = "wagtail-flexible-forms"
+readme = "README.md"
+requires-python = ">=3.8"
+
+[project.urls]
+Source = "https://github.com/coderedcorp/wagtail-flexible-forms"
+
+[tool.setuptools]
+packages = ["wagtail_flexible_forms"]
+
+[tool.setuptools.dynamic]
+version = {attr = "wagtail_flexible_forms.__version__"}
+
+
+# -- TOOLS ----------------------------
+
+[tool.codespell]
+ignore-words-list = ["doubleclick"]
+
+[tool.django-stubs]
+django_settings_module = "testproject.settings"
+
+[tool.mypy]
+ignore_missing_imports = true
+check_untyped_defs = true
+exclude = [
+    '^\..*',
+    'migrations',
+    'node_modules',
+    'venv',
+]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "testproject.settings"
+junit_family = "xunit2"
+addopts = "--cov wagtail-flexible-forms --cov-report html --cov-report xml --junitxml junit/test-results.xml"
+python_files = "tests.py test_*.py"
+
+[tool.ruff]
+extend-exclude = ["build", "migrations"]
+line-length = 80
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.isort]
+case-sensitive = false
+force-single-line = true
+lines-after-imports = 2
