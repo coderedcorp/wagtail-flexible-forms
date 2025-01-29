@@ -11,7 +11,6 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
-from django.contrib.humanize.templatetags.humanize import naturaltime
 from django.core.files.storage import default_storage
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import CASCADE
@@ -24,7 +23,6 @@ from django.db.models import QuerySet
 from django.db.models import TextField
 from django.db.models.fields.files import FieldFile
 from django.db.models.signals import post_delete
-from django.db.models.signals import post_save
 from django.dispatch import receiver
 from django.forms import EmailField
 from django.forms import FileField
@@ -36,12 +34,11 @@ from django.template.response import TemplateResponse
 from django.utils.safestring import SafeData
 from django.utils.safestring import mark_safe
 from django.utils.timezone import now
-from django.utils.translation import ugettext_lazy as _
+from django.utils.translation import gettext_lazy as _
 from PIL import Image
 from wagtail.contrib.forms.models import AbstractEmailForm
 from wagtail.contrib.forms.models import AbstractForm
 from wagtail.contrib.forms.models import AbstractFormSubmission
-from wagtail.core.models import Page
 
 from .blocks import FormFieldBlock
 from .blocks import FormStepBlock
@@ -279,7 +276,6 @@ class Steps(list):
         form = self.get_current_form()
         if form.is_valid():
             form_data = self.get_existing_data()
-
             self.save_files(form)
             form_data[self.current_index] = form.cleaned_data
             form_data = json.dumps(form_data, cls=StreamFormJSONEncoder)
@@ -326,6 +322,7 @@ class SessionFormSubmission(AbstractFormSubmission):
         verbose_name = _("form submission")
         verbose_name_plural = _("form submissions")
         unique_together = (("page", "session_key"), ("page", "user"))
+        abstract = True
 
     @property
     def is_complete(self):
@@ -440,7 +437,7 @@ class SessionFormSubmission(AbstractFormSubmission):
 
     def format_value(self, field, value):
         if value is None or value == "":
-            return "–"
+            return "-"
         new_value = self.form_page.format_value(field, value)
         if new_value != value:
             return new_value
@@ -451,7 +448,7 @@ class SessionFormSubmission(AbstractFormSubmission):
         if isinstance(value, (list, tuple)):
             return ", ".join([self.format_value(field, item) for item in value])
         if isinstance(value, datetime.date):
-            return naturaltime(value)
+            return value
         if isinstance(field, EmailField):
             return self.render_email(value)
         if isinstance(field, URLField):
@@ -582,6 +579,7 @@ class SubmissionRevision(Model):
 
     class Meta:
         ordering = ("-created_at",)
+        abstract = True
 
     @staticmethod
     def get_filters_for(submission):
@@ -668,31 +666,30 @@ class SubmissionRevision(Model):
         return json.loads(self.data)
 
 
-@receiver(post_save)
-def create_submission_changed_revision(sender, **kwargs):
-    if not issubclass(sender, SessionFormSubmission):
-        return
-    submission = kwargs["instance"]
-    created = kwargs["created"]
-    SubmissionRevision.create_from_submission(
-        submission,
-        (SubmissionRevision.CREATED if created else SubmissionRevision.CHANGED),
-    )
+# ORIGINAL NORIPYT CODE.
+# We don't want these receivers triggering.
+
+# @receiver(post_save)
+# def create_submission_changed_revision(sender, **kwargs):
+#     if not issubclass(sender, SessionFormSubmission):
+#         return
+#     submission = kwargs['instance']
+#     created = kwargs['created']
+#     SubmissionRevision.create_from_submission(
+#         submission, (SubmissionRevision.CREATED if created
+#                      else SubmissionRevision.CHANGED))
 
 
-@receiver(post_delete)
-def create_submission_deleted_revision(sender, **kwargs):
-    if not issubclass(sender, SessionFormSubmission):
-        return
-    submission = kwargs["instance"]
-    SubmissionRevision.create_from_submission(
-        submission, SubmissionRevision.DELETED
-    )
+# @receiver(post_delete)
+# def create_submission_deleted_revision(sender, **kwargs):
+#     if not issubclass(sender, SessionFormSubmission):
+#         return
+#     submission = kwargs['instance']
+#     SubmissionRevision.create_from_submission(submission,
+#                                               SubmissionRevision.DELETED)
 
 
 class StreamFormMixin:
-    preview_modes = Page.DEFAULT_PREVIEW_MODES
-
     @property
     def current_step_session_key(self):
         return "%s:step" % self.pk
@@ -794,7 +791,7 @@ class StreamFormMixin:
             if is_complete:
                 return self.serve_success(request, *args, **kwargs)
             return HttpResponseRedirect(self.url)
-        return Page.serve(self, request, *args, **kwargs)
+        return super().serve(self, request, *args, **kwargs)
 
     def get_data_fields(self, by_step=False, add_metadata=True):
         if by_step:
