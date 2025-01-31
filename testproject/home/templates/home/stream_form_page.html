@@ -1,0 +1,63 @@
+{% load static wagtailcore_tags %}
+<html>
+  <head>
+    <title>{{ page.title }}</title>
+    <link rel="stylesheet" href="{% static 'home/style.css' %}">
+  </head>
+  <body>
+
+    <h1>{{ page.title }}</h1>
+
+    {{ page.intro | richtext }}
+
+    <h2>{{step.name}}</h2>
+
+    <!-- Show fancy progress bar with step numbers -->
+    {% with last_step=steps|last %}
+    {% widthratio step.index|add:"1" last_step.index|add:"1" 100 as width %}
+    <div class="progress">
+      <div class="progress-bar"
+           role="progressbar"
+           style="width: {{ width }}%;"
+           aria-valuenow="{{ width }}"
+           aria-valuemin="{{ width }}"
+           aria-valuemax="100"
+           title="Progress">
+        <span>Step {{step.index|add:"1"}} of {{last_step.index|add:"1"}} ({{ width }}%)</span>
+      </div>
+    </div>
+    {% endwith %}
+
+    <hr>
+
+    <form action="{% pageurl self %}" method="POST">
+      {% csrf_token %}
+
+      {% for item in markups_and_bound_fields %}
+      <!-- render content blocks -->
+      {% if item.type == "markup" %}
+      {% include_block item.block %}
+      <!-- render form fields -->
+      {% elif item.type == "field" %}
+      <div class="field">
+        {{ item.field.errors }}
+        {{ item.field.label_tag }} {{ item.field }}
+      </div>
+      {% endif %}
+      {% endfor %}
+
+      <hr>
+
+      {% if step != steps|first %}
+      <a class="btn" href="{{page.url}}?step={{step.index}}">
+        < Previous
+      </a>
+      {% endif %}
+      <button class="btn" type="submit">
+        {% if steps|last == step %}Submit{% else %}Next >{% endif %}
+      </button>
+
+    </form>
+
+  </body>
+</html>
