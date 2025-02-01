@@ -26,8 +26,8 @@ from PIL import Image
 from wagtail.contrib.forms.models import AbstractEmailForm
 from wagtail.contrib.forms.models import AbstractForm
 from wagtail.contrib.forms.models import AbstractFormSubmission
-from wagtail.contrib.forms.models import FormMixin
 from wagtail.contrib.forms.models import FormSubmission
+from wagtail.contrib.forms.views import SubmissionsListView
 
 from .blocks import FormFieldBlock
 from .blocks import FormStepBlock
@@ -716,7 +716,9 @@ def create_submission_deleted_revision(sender, **kwargs):
     )
 
 
-class StreamFormMixin(FormMixin):
+class StreamFormMixin:
+    submissions_list_view_class = SubmissionsListView
+
     @property
     def current_step_session_key(self):
         return "%s:step" % self.pk
@@ -836,11 +838,36 @@ class StreamFormMixin(FormMixin):
         return submission
 
     def get_form(self, *args, **kwargs):
-        # TODO: This is probably a bad implementation. This entire mixin doesn't
-        # really need to inherit from ``FormMixin``, however it plays much nicer
-        # with the Wagtail Admin if it does (i.e. show FormSubmissions in the
-        # Wagtail Admin; show previews in the editor, etc.).
+        # TODO: This is probably a bad implementation. We need the ``request``
+        # object to get our form, however Wagtail's FormMixin implementation
+        # does not accept the request as an argument.
         return self.get_steps().get_current_form()
+
+    def process_form_submission(self, form):
+        # TODO: Once again, we need the request to get this because we do not
+        # have a single ``form`` but rather multiple forms (one per each step).
+        # So this is not directly compatible with Wagtail's implementation.
+        #
+        # ``self.create_final_submission()`` is our implementation.
+        raise NotImplementedError
+
+    def get_landing_page_template(self, request, *args, **kwargs):
+        return self.landing_page_template
+
+    def render_landing_page(
+        self, request, form_submission=None, *args, **kwargs
+    ):
+        """
+        Renders the landing page.
+
+        You can override this method to return a different HttpResponse as
+        landing page. E.g. you could return a redirect to a separate page.
+        """
+        context = self.get_context(request)
+        context["form_submission"] = form_submission
+        return TemplateResponse(
+            request, self.get_landing_page_template(request), context
+        )
 
     def serve(self, request, *args, **kwargs):
         """
@@ -860,9 +887,23 @@ class StreamFormMixin(FormMixin):
                 self.create_final_submission(request, delete_session=True)
                 return self.render_landing_page(request, *args, **kwargs)
             return HttpResponseRedirect(self.url)
-        # This should probably return super().serve(...), however that breaks
-        # ``FormMixin.serve()``.
-        return TemplateResponse(request, self.get_template(request), context)
+        return super().serve(request, *args, **kwargs)
+
+    def get_submissions_list_view_class(self):
+        return self.submissions_list_view_class
+
+    def serve_submissions_list_view(self, request, *args, **kwargs):
+        """
+        Returns list submissions view for admin.
+
+        `list_submissions_view_class` can be set to provide custom view class.
+        Your class must be inherited from SubmissionsListView.
+        """
+        results_only = kwargs.pop("results_only", False)
+        view = self.get_submissions_list_view_class().as_view(
+            results_only=results_only
+        )
+        return view(request, form_page=self, *args, **kwargs)
 
     def get_data_fields(self, by_step=False, add_metadata=True):
         if by_step:
