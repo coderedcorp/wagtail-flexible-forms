@@ -686,6 +686,11 @@ def create_submission_deleted_revision(sender, **kwargs):
 class StreamFormMixin:
     """
     Adds StreamForm builder functionality to a Wagtail Page.
+
+    NOTE: This is inspired by, and similar to,
+    ``wagtail.contrib.forms.models.FormMixin``, however the API and behavior is
+    not directly compatible with it. Ideally, this (and/or FormMixin) could be
+    refactored into a single compatible API.
     """
 
     submissions_list_view_class = SubmissionsListView
@@ -814,24 +819,6 @@ class StreamFormMixin:
             session.delete()
 
         return submission
-
-    def get_form(self, *args, **kwargs):
-        # TODO: This is probably a bad implementation and not exactly compatible
-        # with Wagtail's FormMixin.
-        #
-        # We need the ``request`` object to get our form, however Wagtail's
-        # FormMixin implementation does not accept the request as an argument.
-        return self.get_steps().get_current_form()
-
-    def process_form_submission(self, form):
-        # TODO: This is incompatible with Wagtail's FormMixin.
-        #
-        # Once again, we need the request to get this because we do not
-        # have a single ``form`` but rather multiple forms (one per each step).
-        # So this is not directly compatible with Wagtail's implementation.
-        #
-        # ``self.create_final_submission()`` is our implementation.
-        raise NotImplementedError
 
     def get_landing_page_template(self, request, *args, **kwargs):
         return self.landing_page_template
