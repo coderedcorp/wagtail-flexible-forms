@@ -1,5 +1,6 @@
 import datetime
 import json
+import typing
 from collections import OrderedDict
 from collections import namedtuple
 from importlib import import_module
@@ -22,7 +23,6 @@ from django.template.response import TemplateResponse
 from django.utils.safestring import SafeData
 from django.utils.safestring import mark_safe
 from django.utils.translation import gettext_lazy as _
-from PIL import Image
 from wagtail.contrib.forms.models import AbstractEmailForm
 from wagtail.contrib.forms.models import AbstractForm
 from wagtail.contrib.forms.models import AbstractFormSubmission
@@ -37,6 +37,17 @@ Element = namedtuple("Element", ["type", "block", "field"])
 """
 A simple "object" to hold rendered values from the streamfield.
 """
+
+
+def get_form_enctype(form: forms.Form):
+    """
+    Utility to check if a Django form contains a file field and return the
+    appropriate ``enctype`` attribute for an HTML ``<form>``.
+    """
+    for field in form:
+        if isinstance(field.field.widget, forms.ClearableFileInput):
+            return "multipart/form-data"
+    return "application/x-www-form-urlencoded"
 
 
 class Step:
@@ -313,7 +324,6 @@ class AbstractSessionFormSubmission(AbstractFormSubmission):
         related_name="+",
         on_delete=models.PROTECT,
     )
-    thumbnails_by_path = models.TextField(default=json.dumps({}))
     last_modification = models.DateTimeField(
         _("last modification"),
         auto_now=True,
@@ -369,88 +379,41 @@ class AbstractSessionFormSubmission(AbstractFormSubmission):
     def get_storage(self):
         return self.form_page.get_storage()
 
-    def get_thumbnail_path(self, path, width=64, height=64):
-        if not path:
-            return ""
-        variant = "%s×%s" % (width, height)
-        thumbnails_by_path = json.loads(self.thumbnails_by_path)
-        thumbnails_paths = thumbnails_by_path.get(path)
-        if thumbnails_paths is None:
-            thumbnails_by_path[path] = {}
-        else:
-            thumbnail_path = thumbnails_paths.get(variant)
-            if thumbnail_path is not None:
-                return thumbnail_path
-
-        path = Path(path)
-        thumbnail_path = str(path.with_suffix(".%s%s" % (variant, path.suffix)))
-        storage = self.get_storage()
-        thumbnail_path = storage.get_available_name(thumbnail_path)
-
-        thumbnail = Image.open(storage.path(path))
-        thumbnail.thumbnail((width, height))
-        thumbnail.save(storage.path(thumbnail_path))
-
-        thumbnails_by_path[str(path)][variant] = thumbnail_path
-        self.thumbnails_by_path = json.dumps(
-            thumbnails_by_path, cls=StreamFormJSONEncoder
-        )
-        self.save()
-        return thumbnail_path
-
     def get_fields(self, by_step=False):
         return self.form_page.get_form_fields(by_step=by_step)
 
-    def get_existing_thumbnails(self, path):
-        thumbnails_paths = json.loads(self.thumbnails_by_path).get(path, {})
-        for thumbnail_path in thumbnails_paths.values():
-            yield thumbnail_path
-
-    def get_files_by_field(self):
+    def get_files_by_field(self) -> typing.Dict[str, str]:
+        """
+        Returns a dictionary of field name : file path.
+        """
         data = self.get_data(raw=True)
         files = {}
         for name, field in self.get_fields().items():
             if isinstance(field, forms.FileField):
                 path = data.get(name)
                 if path:
-                    files[name] = [path] + list(
-                        self.get_existing_thumbnails(path)
-                    )
+                    files[name] = path
         return files
 
     def get_all_files(self):
-        for paths in self.get_files_by_field().values():
-            for path in paths:
-                yield path
+        for path in self.get_files_by_field().values():
+            yield path
 
     def delete_file(self, field_name):
-        thumbnails_by_path = json.loads(self.thumbnails_by_path)
         for path in self.get_files_by_field().get(field_name, ()):
             self.get_storage().delete(path)
-            if path in thumbnails_by_path:
-                del thumbnails_by_path[path]
-        self.thumbnails_by_path = json.dumps(
-            thumbnails_by_path, cls=StreamFormJSONEncoder
-        )
-        self.save()
 
     def render_email(self, value):
         return value
 
     def render_link(self, value):
-        return mark_safe('<a href="%s" target="_blank">%s</a>') % (value, value)
+        return value
 
     def render_image(self, value):
-        storage = self.get_storage()
-        return mark_safe(
-            '<a href="%s" target="_blank"><img src="%s" /></a>'
-        ) % (storage.url(value), storage.url(self.get_thumbnail_path(value)))
+        return self.get_storage().url(value)
 
     def render_file(self, value):
-        return mark_safe('<a href="%s" target="_blank">%s</a>') % (
-            self.get_storage().url(value),
-            Path(value).name,
-        )
+        return self.get_storage().url(value)
 
     def format_value(self, field, value):
         if value is None or value == "":
@@ -717,7 +680,16 @@ def create_submission_deleted_revision(sender, **kwargs):
 
 
 class StreamFormMixin:
+    """
+    Adds StreamForm builder functionality to a Wagtail Page.
+    """
+
     submissions_list_view_class = SubmissionsListView
+
+    preview_modes = [
+        ("form", _("Form")),
+        ("landing", _("Landing page")),
+    ]
 
     @property
     def current_step_session_key(self):
@@ -746,10 +718,12 @@ class StreamFormMixin:
         if step_value is not None and step_value.isdigit():
             self.steps.current = int(step_value) - 1
         form = self.steps.get_current_form()
+        enctype = get_form_enctype(form)
         context.update(
             steps=self.steps,
             step=self.steps.current,
             form=form,
+            form_enctype=enctype,
             markups_and_bound_fields=list(
                 self.steps.current.get_markups_and_bound_fields(form)
             ),
@@ -838,13 +812,17 @@ class StreamFormMixin:
         return submission
 
     def get_form(self, *args, **kwargs):
-        # TODO: This is probably a bad implementation. We need the ``request``
-        # object to get our form, however Wagtail's FormMixin implementation
-        # does not accept the request as an argument.
+        # TODO: This is probably a bad implementation and not exactly compatible
+        # with Wagtail's FormMixin.
+        #
+        # We need the ``request`` object to get our form, however Wagtail's
+        # FormMixin implementation does not accept the request as an argument.
         return self.get_steps().get_current_form()
 
     def process_form_submission(self, form):
-        # TODO: Once again, we need the request to get this because we do not
+        # TODO: This is incompatible with Wagtail's FormMixin.
+        #
+        # Once again, we need the request to get this because we do not
         # have a single ``form`` but rather multiple forms (one per each step).
         # So this is not directly compatible with Wagtail's implementation.
         #
@@ -888,6 +866,12 @@ class StreamFormMixin:
                 return self.render_landing_page(request, *args, **kwargs)
             return HttpResponseRedirect(self.url)
         return super().serve(request, *args, **kwargs)
+
+    def serve_preview(self, request, mode_name):
+        if mode_name == "landing":
+            return self.render_landing_page(request)
+        else:
+            return super().serve_preview(request, mode_name)
 
     def get_submissions_list_view_class(self):
         return self.submissions_list_view_class

@@ -30,7 +30,7 @@
 
     <hr>
 
-    <form action="{% pageurl self %}" method="POST">
+    <form action="{% pageurl self %}" method="POST" enctype="{{ form_enctype }}">
       {% csrf_token %}
 
       {% for item in markups_and_bound_fields %}
@@ -49,7 +49,7 @@
       <hr>
 
       {% if step != steps|first %}
-      <a class="btn" href="{{page.url}}?step={{step.index}}">
+      <a class="btn btn-outline" href="{{page.url}}?step={{step.index}}">
         < Previous
       </a>
       {% endif %}

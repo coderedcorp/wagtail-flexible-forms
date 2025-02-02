@@ -13,7 +13,7 @@ a {
 }
 .btn {
   background-color: var(--blue);
-  border: none;
+  border: 1px solid var(--blue);
   border-radius: 6px;
   color: white;
   font-family: inherit;
@@ -26,6 +26,12 @@ a {
 .btn:hover,
 .btn:focus {
   background-color: var(--blue1);
+  border: 1px solid var(--blue2);
+  color: white;
+}
+.btn-outline {
+  background-color: white;
+  color: var(--blue);
 }
 hr {
   border: none;

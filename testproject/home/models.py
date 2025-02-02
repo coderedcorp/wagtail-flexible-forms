@@ -74,8 +74,7 @@ STREAMFORM_FIELDS = [
     ("sf_image", wff_blocks.ImageFieldBlock(group="Fields")),
     ("sf_file", wff_blocks.FileFieldBlock(group="Fields")),
     # And content blocks from Wagtail!
-    ("heading", blocks.CharBlock(group="Content")),
-    ("paragraph", blocks.RichTextBlock(group="Content")),
+    ("text", blocks.RichTextBlock(group="Content")),
     ("image", ImageBlock(group="Content")),
 ]
 
