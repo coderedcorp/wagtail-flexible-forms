@@ -426,7 +426,10 @@ class AbstractSessionFormSubmission(AbstractFormSubmission):
         if value is False:
             return "No"
         if isinstance(value, (list, tuple)):
-            return ", ".join([self.format_value(field, item) for item in value])
+            formatted_values = []
+            for item in value:
+                formatted_values.append(self.format_value(field, item))
+            return ", ".join(formatted_values)
         if isinstance(value, datetime.date):
             return value
         if isinstance(field, forms.EmailField):
@@ -452,22 +455,24 @@ class AbstractSessionFormSubmission(AbstractFormSubmission):
             self._meta.get_field(field_name).formfield(), value
         )
 
-    def get_steps_data(self, raw=False):
+    def get_steps_data(self, raw=False) -> typing.List[OrderedDict[str, str]]:
+        """
+        Returns a dictionary of {field name: rendered data value}
+        """
         steps_data = json.loads(self.form_data)
         if raw:
             return steps_data
         fields_and_data_iterator = zip_longest(
             self.get_fields(by_step=True), steps_data, fillvalue={}
         )
-        return [
-            OrderedDict(
-                [
-                    (name, self.format_value(field, step_data.get(name)))
-                    for name, field in step_fields.items()
-                ]
-            )
-            for step_fields, step_data in fields_and_data_iterator
-        ]
+        list_od = []
+        for step_fields, step_data in fields_and_data_iterator:
+            od = OrderedDict()
+            for name, field in step_fields.items():
+                od[name] = self.format_value(field, step_data.get(name))
+            list_od.append(od)
+
+        return list_od
 
     def get_data(self, raw=False, add_metadata=True):
         steps_data = self.get_steps_data(raw=raw)
@@ -491,13 +496,12 @@ class AbstractSessionFormSubmission(AbstractFormSubmission):
             self.form_page.get_data_fields(by_step=True),
             self.get_steps_data(raw=raw),
         ):
-            yield (
-                step,
-                [
+            fieldlist = []
+            for field_name, field_label in step_data_fields:
+                fieldlist.append(
                     (field_name, field_label, step_data[field_name])
-                    for field_name, field_label in step_data_fields
-                ],
-            )
+                )
+            yield (step, fieldlist)
 
 
 @receiver(post_delete, sender=AbstractSessionFormSubmission)
@@ -891,13 +895,13 @@ class StreamFormMixin:
 
     def get_data_fields(self, by_step=False, add_metadata=True):
         if by_step:
-            return [
-                [
-                    (field_name, field.label)
-                    for field_name, field in step_fields.items()
-                ]
-                for step_fields in self.get_form_fields(by_step=True)
-            ]
+            stepfields = []
+            for step_fields in self.get_form_fields(by_step=True):
+                fieldtuples = []
+                for field_name, field in step_fields.items():
+                    fieldtuples.append((field_name, field.label))
+                stepfields.append(fieldtuples)
+            return stepfields
 
         data_fields = []
         if add_metadata:
@@ -909,13 +913,14 @@ class StreamFormMixin:
                     ("last_modification", _("Last modification")),
                 )
             )
-        data_fields.extend(
-            [
-                (field_name, field_label)
-                for step_data_fields in self.get_data_fields(by_step=True)
-                for field_name, field_label in step_data_fields
-            ]
-        )
+
+        # Flatten the nested set of steps -> fields into a list of fields.
+        stepfields = []
+        for step_data_fields in self.get_data_fields(by_step=True):
+            for entry in step_data_fields:
+                stepfields.append(entry)
+
+        data_fields.extend(stepfields)
         return data_fields
 
     def format_value(self, field, value):
