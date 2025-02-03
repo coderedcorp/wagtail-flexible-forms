@@ -78,17 +78,6 @@ STREAMFORM_FIELDS = [
     ("image", ImageBlock(group="Content")),
 ]
 
-# StreamForms have steps, i.e. can be multiple pages with back/next
-# buttons. So let's nest our those blocks into a step.
-STREAMFORM_BLOCKS = [
-    (
-        "sf_step",
-        wff_blocks.FormStepBlock(
-            [("form_fields", blocks.StreamBlock(STREAMFORM_FIELDS))]
-        ),
-    )
-]
-
 
 # Next, let's define temporary objects to hold the submission progress while the
 # user fills it out.
@@ -103,14 +92,14 @@ class MySessionFormSubmission(AbstractSessionFormSubmission):
 
 
 # Finally, we'll define our Page which pulls it all together.
-class StreamFormPage(StreamFormMixin, Page):
+class SingleStepStreamFormPage(StreamFormMixin, Page):
     template = "home/stream_form_page.html"
     landing_page_template = "home/form_page_landing.html"
 
     intro = RichTextField(blank=True)
 
-    # Set ``form_fields`` to contain our StreamField.
-    form_fields = StreamField(STREAMFORM_BLOCKS)
+    # Set ``form_fields`` to contain our Streamform fields.
+    form_fields = StreamField(STREAMFORM_FIELDS)
 
     content_panels = Page.content_panels + [
         FieldPanel("intro"),
@@ -136,4 +125,39 @@ class StreamFormPage(StreamFormMixin, Page):
         You must return something that inherits from
         ``AbstractSessionFormSubmission``.
         """
+        return MySessionFormSubmission
+
+
+# StreamForms can also have steps, i.e. can be multiple pages with back/next
+# buttons. So let's nest our those blocks into a step.
+STREAMFORM_STEP_BLOCKS = [
+    (
+        "sf_step",
+        wff_blocks.FormStepBlock(
+            [("form_fields", blocks.StreamBlock(STREAMFORM_FIELDS))]
+        ),
+    )
+]
+
+
+class MultiStepStreamFormPage(StreamFormMixin, Page):
+    template = "home/stream_form_page.html"
+    landing_page_template = "home/form_page_landing.html"
+
+    intro = RichTextField(blank=True)
+
+    # Set ``form_fields`` to contain our multi-step fields.
+    form_fields = StreamField(STREAMFORM_STEP_BLOCKS)
+
+    content_panels = Page.content_panels + [
+        FieldPanel("intro"),
+        FieldPanel("form_fields"),
+    ]
+
+    @staticmethod
+    def get_submission_class():
+        return FormSubmission
+
+    @staticmethod
+    def get_session_submission_class():
         return MySessionFormSubmission

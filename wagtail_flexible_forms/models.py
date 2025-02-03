@@ -55,8 +55,6 @@ class Step:
         self.steps = steps
         self.index = index
         block = getattr(struct_child, "block", None)
-        if block is None:
-            struct_child = []
         if isinstance(block, FormStepBlock):
             self.name = struct_child.value["name"]
             self.form_fields = struct_child.value["form_fields"]
