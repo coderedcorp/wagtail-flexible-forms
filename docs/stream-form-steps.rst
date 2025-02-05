@@ -27,7 +27,7 @@ In ``home/models.py``:
    ]
 
 
-Step 3: Define a Stream Form Page with Steps
+Step 2: Define a Stream Form Page with Steps
 --------------------------------------------
 
 .. code-block:: python
@@ -63,7 +63,7 @@ Step 3: Define a Stream Form Page with Steps
            return MySessionFormSubmission
 
 
-Step 4: Create HTML Templates
+Step 3: Create HTML Templates
 -----------------------------
 
 More robust templates are available in the `testproject <https://github.com/coderedcorp/wagtail-flexible-forms/tree/main/testproject>`_, however the examples below will get you started.
@@ -123,7 +123,7 @@ File: ``home/templates/home/stream_form_page.html``
    </html>
 
 
-Step 5: Migrate
+Step 4: Migrate
 ---------------
 
 Finally, you'll need to make and run migrations. Then, begin editing your new page in the Wagtail admin.

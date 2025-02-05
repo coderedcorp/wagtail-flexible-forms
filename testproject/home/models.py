@@ -119,7 +119,7 @@ class SingleStepStreamFormPage(StreamFormMixin, Page):
     @staticmethod
     def get_session_submission_class():
         """
-        Session submission class is used to stored temporary data while the
+        Session submission class is used to store temporary data while the
         form is being filled out, i.e. for multi-step forms.
 
         You must return something that inherits from

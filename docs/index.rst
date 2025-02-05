@@ -1,7 +1,7 @@
 Wagtail Flexible Forms Documentation
 ====================================
 
-Wagtail flexible forms provides a more robust StreamField-based form builder (sometimes called a "StreamForm") with similar functionality to `wagtail.contrib.forms`.
+Wagtail flexible forms provides a more robust StreamField-based form builder (sometimes called a "StreamForm") with similar functionality to ``wagtail.contrib.forms``.
 
 `GitHub <https://github.com/coderedcorp/wagtail-flexible-forms>`_ |
 `Documentation <https://docs.coderedcorp.com/wagtail-flexible-forms/>`_ |
