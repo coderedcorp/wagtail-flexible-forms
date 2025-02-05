@@ -1,0 +1,70 @@
+:root {
+  --blue: #0d6efd;
+  --blue1: #0b5ed7;
+  --blue2: #0a58ca;
+  --light: #e9ecef;
+}
+body {
+  font-family: sans-serif;
+  margin: 0 20px;
+}
+a {
+  color: var(--blue);
+}
+.btn {
+  background-color: var(--blue);
+  border: 1px solid var(--blue);
+  border-radius: 6px;
+  color: white;
+  font-family: inherit;
+  font-size: 0.9em;
+  font-weight: bold;
+  padding: 6px 12px;
+  margin-right: 1em;
+  text-decoration: none;
+}
+.btn:hover,
+.btn:focus {
+  background-color: var(--blue1);
+  border: 1px solid var(--blue2);
+  color: white;
+}
+.btn-outline {
+  background-color: white;
+  color: var(--blue);
+}
+hr {
+  border: none;
+  border-bottom: 2px solid var(--light);
+  margin: 15px 0;
+}
+h1 {
+  background-color: var(--light);
+  padding: 40px 20px;
+  margin: 0 -20px;
+  width: 100%;
+}
+.progress {
+  background-color: var(--light);
+  border-radius: 6px;
+  display: flex;
+  height: 26px;
+  overflow: hidden;
+}
+.progress-bar {
+  background-color: var(--blue);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  text-align: center;
+  white-space: nowrap;
+}
+.field {
+  margin: 15px 0;
+}
+.field label {
+  display: inline-block;
+  min-width: 150px;
+}

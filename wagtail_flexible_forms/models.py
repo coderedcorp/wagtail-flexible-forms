@@ -1,47 +1,53 @@
 import datetime
 import json
-import os
+import typing
 from collections import OrderedDict
+from collections import namedtuple
 from importlib import import_module
 from itertools import zip_longest
 from pathlib import Path
 
-from django.apps import apps
+from django import forms
 from django.conf import settings
-from django.contrib import messages
 from django.contrib.contenttypes.fields import GenericForeignKey
 from django.contrib.contenttypes.models import ContentType
 from django.core.files.storage import default_storage
 from django.core.serializers.json import DjangoJSONEncoder
-from django.db.models import CASCADE
-from django.db.models import PROTECT
-from django.db.models import CharField
-from django.db.models import DateTimeField
-from django.db.models import ForeignKey
-from django.db.models import Model
-from django.db.models import QuerySet
-from django.db.models import TextField
+from django.db import models
 from django.db.models.fields.files import FieldFile
 from django.db.models.signals import post_delete
+from django.db.models.signals import post_save
 from django.dispatch import receiver
-from django.forms import EmailField
-from django.forms import FileField
-from django.forms import Form
-from django.forms import ImageField
-from django.forms import URLField
 from django.http import HttpResponseRedirect
 from django.template.response import TemplateResponse
 from django.utils.safestring import SafeData
 from django.utils.safestring import mark_safe
-from django.utils.timezone import now
 from django.utils.translation import gettext_lazy as _
-from PIL import Image
 from wagtail.contrib.forms.models import AbstractEmailForm
 from wagtail.contrib.forms.models import AbstractForm
 from wagtail.contrib.forms.models import AbstractFormSubmission
+from wagtail.contrib.forms.models import FormSubmission
+from wagtail.contrib.forms.views import SubmissionsListView
 
 from .blocks import FormFieldBlock
 from .blocks import FormStepBlock
+
+
+Element = namedtuple("Element", ["type", "block", "field"])
+"""
+A simple "object" to hold rendered values from the streamfield.
+"""
+
+
+def get_form_enctype(form: forms.Form):
+    """
+    Utility to check if a Django form contains a file field and return the
+    appropriate ``enctype`` attribute for an HTML ``<form>``.
+    """
+    for field in form:
+        if isinstance(field.field.widget, forms.ClearableFileInput):
+            return "multipart/form-data"
+    return "application/x-www-form-urlencoded"
 
 
 class Step:
@@ -49,8 +55,6 @@ class Step:
         self.steps = steps
         self.index = index
         block = getattr(struct_child, "block", None)
-        if block is None:
-            struct_child = []
         if isinstance(block, FormStepBlock):
             self.name = struct_child.value["name"]
             self.form_fields = struct_child.value["form_fields"]
@@ -85,14 +89,20 @@ class Step:
         )
 
     def get_markups_and_bound_fields(self, form):
+        """
+        Yields ``Element`` tuples of:
+        0: Type indicator of "field" or "markup".
+        1: The Wagtail block object.
+        2: Field name (or None for non-fields i.e. markup).
+        """
         for struct_child in self.form_fields:
             block = struct_child.block
             if isinstance(block, FormFieldBlock):
                 struct_value = struct_child.value
                 field_name = block.get_slug(struct_value)
-                yield form[field_name], "field"
+                yield Element("field", struct_child, form[field_name])
             else:
-                yield mark_safe(struct_child), "markup"
+                yield Element("markup", struct_child, None)
 
     def __str__(self):
         if self.name:
@@ -145,7 +155,7 @@ class Step:
 
             for field_name, value in data.items():
                 if field_name in fields and isinstance(
-                    fields[field_name], FileField
+                    fields[field_name], forms.FileField
                 ):
                     data[field_name] = FieldFile(None, FakeField, value)
         return data
@@ -218,11 +228,11 @@ class Steps(list):
     def backward(self, increment: int = 1):
         self.current = self.current_index - increment
 
-    def get_submission(self):
-        return self.page.get_submission(self.request)
+    def get_session_submission(self):
+        return self.page.get_session_submission(self.request)
 
     def get_existing_data(self):
-        submission = self.get_submission()
+        submission = self.get_session_submission()
         data = [] if submission is None else json.loads(submission.form_data)
         length_difference = len(self) - len(data)
         if length_difference > 0:
@@ -249,9 +259,9 @@ class Steps(list):
         return self.page.get_storage()
 
     def save_files(self, form):
-        submission = self.get_submission()
+        submission = self.get_session_submission()
         for name, field in form.fields.items():
-            if isinstance(field, FileField):
+            if isinstance(field, forms.FileField):
                 file = form.cleaned_data[name]
                 if file == form.initial.get(name, ""):  # Nothing submitted.
                     form.cleaned_data[name] = file.name
@@ -280,7 +290,7 @@ class Steps(list):
             form_data[self.current_index] = form.cleaned_data
             form_data = json.dumps(form_data, cls=StreamFormJSONEncoder)
             is_complete = self.current.is_last
-            submission = self.get_submission()
+            submission = self.get_session_submission()
             submission.form_data = form_data
             if not submission.is_complete and is_complete:
                 submission.status = submission.COMPLETE
@@ -293,17 +303,29 @@ class Steps(list):
         return False
 
 
-class SessionFormSubmission(AbstractFormSubmission):
-    session_key = CharField(max_length=40, null=True, default=None)
-    user = ForeignKey(
+class AbstractSessionFormSubmission(AbstractFormSubmission):
+    class Meta:
+        verbose_name = _("form submission")
+        verbose_name_plural = _("form submissions")
+        unique_together = (("page", "session_key"), ("page", "user"))
+        abstract = True
+
+    session_key = models.CharField(
+        max_length=40,
+        null=True,
+        default=None,
+    )
+    user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
         blank=True,
         related_name="+",
-        on_delete=PROTECT,
+        on_delete=models.PROTECT,
     )
-    thumbnails_by_path = TextField(default=json.dumps({}))
-    last_modification = DateTimeField(_("last modification"), auto_now=True)
+    last_modification = models.DateTimeField(
+        _("last modification"),
+        auto_now=True,
+    )
     INCOMPLETE = "incomplete"
     COMPLETE = "complete"
     REVIEWED = "reviewed"
@@ -311,18 +333,24 @@ class SessionFormSubmission(AbstractFormSubmission):
     REJECTED = "rejected"
     STATUSES = (
         (INCOMPLETE, _("Not submitted")),
-        (COMPLETE, _("In progress")),
+        (COMPLETE, _("Complete")),
         (REVIEWED, _("Under consideration")),
         (APPROVED, _("Approved")),
         (REJECTED, _("Rejected")),
     )
-    status = CharField(max_length=10, choices=STATUSES, default=INCOMPLETE)
+    status = models.CharField(
+        max_length=10,
+        choices=STATUSES,
+        default=INCOMPLETE,
+    )
 
-    class Meta:
-        verbose_name = _("form submission")
-        verbose_name_plural = _("form submissions")
-        unique_together = (("page", "session_key"), ("page", "user"))
-        abstract = True
+    @staticmethod
+    def get_revision_class():
+        """
+        You must override this in your impelementation to return something
+        that inherits from ``AbstractSubmissionRevision``
+        """
+        return AbstractSubmissionRevision
 
     @property
     def is_complete(self):
@@ -349,91 +377,41 @@ class SessionFormSubmission(AbstractFormSubmission):
     def get_storage(self):
         return self.form_page.get_storage()
 
-    def get_thumbnail_path(self, path, width=64, height=64):
-        if not path:
-            return ""
-        variant = "%s×%s" % (width, height)
-        thumbnails_by_path = json.loads(self.thumbnails_by_path)
-        thumbnails_paths = thumbnails_by_path.get(path)
-        if thumbnails_paths is None:
-            thumbnails_by_path[path] = {}
-        else:
-            thumbnail_path = thumbnails_paths.get(variant)
-            if thumbnail_path is not None:
-                return thumbnail_path
-
-        path = Path(path)
-        thumbnail_path = str(path.with_suffix(".%s%s" % (variant, path.suffix)))
-        storage = self.get_storage()
-        thumbnail_path = storage.get_available_name(thumbnail_path)
-
-        thumbnail = Image.open(storage.path(path))
-        thumbnail.thumbnail((width, height))
-        thumbnail.save(storage.path(thumbnail_path))
-
-        thumbnails_by_path[str(path)][variant] = thumbnail_path
-        self.thumbnails_by_path = json.dumps(
-            thumbnails_by_path, cls=StreamFormJSONEncoder
-        )
-        self.save()
-        return thumbnail_path
-
     def get_fields(self, by_step=False):
         return self.form_page.get_form_fields(by_step=by_step)
 
-    def get_existing_thumbnails(self, path):
-        thumbnails_paths = json.loads(self.thumbnails_by_path).get(path, {})
-        for thumbnail_path in thumbnails_paths.values():
-            yield thumbnail_path
-
-    def get_files_by_field(self):
+    def get_files_by_field(self) -> typing.Dict[str, str]:
+        """
+        Returns a dictionary of field name : file path.
+        """
         data = self.get_data(raw=True)
         files = {}
         for name, field in self.get_fields().items():
-            if isinstance(field, FileField):
+            if isinstance(field, forms.FileField):
                 path = data.get(name)
                 if path:
-                    files[name] = [path] + list(
-                        self.get_existing_thumbnails(path)
-                    )
+                    files[name] = path
         return files
 
     def get_all_files(self):
-        for paths in self.get_files_by_field().values():
-            for path in paths:
-                yield path
+        for path in self.get_files_by_field().values():
+            yield path
 
     def delete_file(self, field_name):
-        thumbnails_by_path = json.loads(self.thumbnails_by_path)
         for path in self.get_files_by_field().get(field_name, ()):
             self.get_storage().delete(path)
-            if path in thumbnails_by_path:
-                del thumbnails_by_path[path]
-        self.thumbnails_by_path = json.dumps(
-            thumbnails_by_path, cls=StreamFormJSONEncoder
-        )
-        self.save()
 
     def render_email(self, value):
-        return mark_safe('<a href="mailto:%s" target="_blank">%s</a>') % (
-            value,
-            value,
-        )
+        return value
 
     def render_link(self, value):
-        return mark_safe('<a href="%s" target="_blank">%s</a>') % (value, value)
+        return value
 
     def render_image(self, value):
-        storage = self.get_storage()
-        return mark_safe(
-            '<a href="%s" target="_blank"><img src="%s" /></a>'
-        ) % (storage.url(value), storage.url(self.get_thumbnail_path(value)))
+        return self.get_storage().url(value)
 
     def render_file(self, value):
-        return mark_safe('<a href="%s" target="_blank">%s</a>') % (
-            self.get_storage().url(value),
-            Path(value).name,
-        )
+        return self.get_storage().url(value)
 
     def format_value(self, field, value):
         if value is None or value == "":
@@ -446,16 +424,19 @@ class SessionFormSubmission(AbstractFormSubmission):
         if value is False:
             return "No"
         if isinstance(value, (list, tuple)):
-            return ", ".join([self.format_value(field, item) for item in value])
+            formatted_values = []
+            for item in value:
+                formatted_values.append(self.format_value(field, item))
+            return ", ".join(formatted_values)
         if isinstance(value, datetime.date):
             return value
-        if isinstance(field, EmailField):
+        if isinstance(field, forms.EmailField):
             return self.render_email(value)
-        if isinstance(field, URLField):
+        if isinstance(field, forms.URLField):
             return self.render_link(value)
-        if isinstance(field, ImageField):
+        if isinstance(field, forms.ImageField):
             return self.render_image(value)
-        if isinstance(field, FileField):
+        if isinstance(field, forms.FileField):
             return self.render_file(value)
         if isinstance(value, SafeData) or hasattr(value, "__html__"):
             return value
@@ -472,30 +453,28 @@ class SessionFormSubmission(AbstractFormSubmission):
             self._meta.get_field(field_name).formfield(), value
         )
 
-    def get_steps_data(self, raw=False):
+    def get_steps_data(self, raw=False) -> typing.List[OrderedDict[str, str]]:
+        """
+        Returns a dictionary of {field name: rendered data value}
+        """
         steps_data = json.loads(self.form_data)
         if raw:
             return steps_data
         fields_and_data_iterator = zip_longest(
             self.get_fields(by_step=True), steps_data, fillvalue={}
         )
-        return [
-            OrderedDict(
-                [
-                    (name, self.format_value(field, step_data.get(name)))
-                    for name, field in step_fields.items()
-                ]
-            )
-            for step_fields, step_data in fields_and_data_iterator
-        ]
+        list_od = []
+        for step_fields, step_data in fields_and_data_iterator:
+            od = OrderedDict()
+            for name, field in step_fields.items():
+                od[name] = self.format_value(field, step_data.get(name))
+            list_od.append(od)
 
-    def get_extra_data(self, raw=False):
-        return self.form_page.get_extra_data(self, raw=raw)
+        return list_od
 
     def get_data(self, raw=False, add_metadata=True):
         steps_data = self.get_steps_data(raw=raw)
         form_data = {}
-        form_data.update(self.get_extra_data(raw=raw))
         for step_data in steps_data:
             form_data.update(step_data)
         if add_metadata:
@@ -515,16 +494,15 @@ class SessionFormSubmission(AbstractFormSubmission):
             self.form_page.get_data_fields(by_step=True),
             self.get_steps_data(raw=raw),
         ):
-            yield (
-                step,
-                [
+            fieldlist = []
+            for field_name, field_label in step_data_fields:
+                fieldlist.append(
                     (field_name, field_label, step_data[field_name])
-                    for field_name, field_label in step_data_fields
-                ],
-            )
+                )
+            yield (step, fieldlist)
 
 
-@receiver(post_delete, sender=SessionFormSubmission)
+@receiver(post_delete, sender=AbstractSessionFormSubmission)
 def delete_files(sender, **kwargs):
     instance = kwargs["instance"]
     instance.reset_step()
@@ -544,7 +522,7 @@ def delete_files(sender, **kwargs):
                 Path(storage.path(directory)).rmdir()
 
 
-class SubmissionRevisionQuerySet(QuerySet):
+class SubmissionRevisionQuerySet(models.QuerySet):
     def for_submission(self, submission):
         return self.filter(**self.model.get_filters_for(submission))
 
@@ -558,7 +536,13 @@ class SubmissionRevisionQuerySet(QuerySet):
         return self.filter(type=self.model.DELETED)
 
 
-class SubmissionRevision(Model):
+class AbstractSubmissionRevision(models.Model):
+    class Meta:
+        ordering = ("-created_at",)
+        abstract = True
+
+    objects = SubmissionRevisionQuerySet.as_manager()
+
     CREATED = "created"
     CHANGED = "changed"
     DELETED = "deleted"
@@ -567,19 +551,24 @@ class SubmissionRevision(Model):
         (CHANGED, _("Changed")),
         (DELETED, _("Deleted")),
     )
-    type = CharField(max_length=7, choices=TYPES)
-    created_at = DateTimeField(auto_now_add=True)
-    submission_ct = ForeignKey("contenttypes.ContentType", on_delete=CASCADE)
-    submission_id = TextField()
-    submission = GenericForeignKey("submission_ct", "submission_id")
-    data = TextField()
-    summary = TextField()
-
-    objects = SubmissionRevisionQuerySet.as_manager()
-
-    class Meta:
-        ordering = ("-created_at",)
-        abstract = True
+    type = models.CharField(
+        max_length=7,
+        choices=TYPES,
+    )
+    created_at = models.DateTimeField(
+        auto_now_add=True,
+    )
+    submission_ct = models.ForeignKey(
+        "contenttypes.ContentType",
+        on_delete=models.CASCADE,
+    )
+    submission_id = models.TextField()
+    submission = GenericForeignKey(
+        "submission_ct",
+        "submission_id",
+    )
+    data = models.TextField()
+    summary = models.TextField()
 
     @staticmethod
     def get_filters_for(submission):
@@ -666,30 +655,49 @@ class SubmissionRevision(Model):
         return json.loads(self.data)
 
 
-# ORIGINAL NORIPYT CODE.
-# We don't want these receivers triggering.
+@receiver(post_save)
+def create_submission_changed_revision(sender, **kwargs):
+    if not issubclass(sender, AbstractSessionFormSubmission):
+        return
+    # ``sender`` is the concrete class of AbstractSessionFormSubmission.
+    SubmissionRevision = sender.get_revision_class()
+    submission = kwargs["instance"]
+    created = kwargs["created"]
+    SubmissionRevision.create_from_submission(
+        submission,
+        (SubmissionRevision.CREATED if created else SubmissionRevision.CHANGED),
+    )
 
-# @receiver(post_save)
-# def create_submission_changed_revision(sender, **kwargs):
-#     if not issubclass(sender, SessionFormSubmission):
-#         return
-#     submission = kwargs['instance']
-#     created = kwargs['created']
-#     SubmissionRevision.create_from_submission(
-#         submission, (SubmissionRevision.CREATED if created
-#                      else SubmissionRevision.CHANGED))
 
-
-# @receiver(post_delete)
-# def create_submission_deleted_revision(sender, **kwargs):
-#     if not issubclass(sender, SessionFormSubmission):
-#         return
-#     submission = kwargs['instance']
-#     SubmissionRevision.create_from_submission(submission,
-#                                               SubmissionRevision.DELETED)
+@receiver(post_delete)
+def create_submission_deleted_revision(sender, **kwargs):
+    if not issubclass(sender, AbstractSessionFormSubmission):
+        return
+    # ``sender`` is the concrete class of AbstractSessionFormSubmission.
+    SubmissionRevision = sender.get_revision_class()
+    submission = kwargs["instance"]
+    SubmissionRevision.create_from_submission(
+        submission, SubmissionRevision.DELETED
+    )
 
 
 class StreamFormMixin:
+    """
+    Adds StreamForm builder functionality to a Wagtail Page.
+
+    NOTE: This is inspired by, and similar to,
+    ``wagtail.contrib.forms.models.FormMixin``, however the API and behavior is
+    not directly compatible with it. Ideally, this (and/or FormMixin) could be
+    refactored into a single compatible API.
+    """
+
+    submissions_list_view_class = SubmissionsListView
+
+    preview_modes = [
+        ("form", _("Form")),
+        ("landing", _("Landing page")),
+    ]
+
     @property
     def current_step_session_key(self):
         return "%s:step" % self.pk
@@ -717,10 +725,12 @@ class StreamFormMixin:
         if step_value is not None and step_value.isdigit():
             self.steps.current = int(step_value) - 1
         form = self.steps.get_current_form()
+        enctype = get_form_enctype(form)
         context.update(
             steps=self.steps,
             step=self.steps.current,
             form=form,
+            form_enctype=enctype,
             markups_and_bound_fields=list(
                 self.steps.current.get_markups_and_bound_fields(form)
             ),
@@ -732,14 +742,29 @@ class StreamFormMixin:
 
     @staticmethod
     def get_form_class_bases():
-        return (Form,)
+        return (forms.Form,)
 
     @staticmethod
     def get_submission_class():
-        return SessionFormSubmission
+        """
+        Submission class is used to store the final form submission, after
+        the user has finished their session.
+        """
+        return FormSubmission
 
-    def get_submission(self, request):
-        Submission = self.get_submission_class()
+    @staticmethod
+    def get_session_submission_class():
+        """
+        Session submission class is used to stored temporary data while the
+        form is being filled out, i.e. for multi-step forms.
+
+        You must override this to return something that inherits from
+        ``AbstractSessionFormSubmission``.
+        """
+        return AbstractSessionFormSubmission
+
+    def get_session_submission(self, request):
+        Submission = self.get_session_submission_class()
         if request.user.is_authenticated:
             user_submission = (
                 Submission.objects.filter(user=request.user, page=self)
@@ -749,6 +774,10 @@ class StreamFormMixin:
             if user_submission is None:
                 return Submission(user=request.user, page=self, form_data="[]")
             return user_submission
+
+        # Ensure that anonymous users get a session key.
+        if not request.session.session_key:
+            request.session.create()
 
         user_submission = (
             Submission.objects.filter(
@@ -765,46 +794,101 @@ class StreamFormMixin:
             )
         return user_submission
 
-    def get_success_url(self):
-        form_complete_models = [
-            model
-            for model in apps.get_models()
-            if issubclass(model, FormCompleteMixin)
-        ]
-        cts = ContentType.objects.get_for_models(*form_complete_models).values()
-        first_child = self.get_children().filter(content_type__in=cts).first()
-        if first_child is None:
-            return self.url
-        return first_child.url
+    def create_final_submission(self, request, delete_session=True):
+        """
+        Converts the temporary session submission object into a final
+        submission object.
 
-    def serve_success(self, request, *args, **kwargs):
-        url = self.get_success_url()
-        if url == self.url:
-            messages.success(request, _("Successfully submitted the form."))
-        return HttpResponseRedirect(url)
+        ``delete_session`` will delete all temporary ``SessionSubmission`` and
+        ``SubmissionRevision`` objects from the database.
+        """
+        session = self.get_session_submission(request)
+        submission_data = session.get_data()
+        if "user" in submission_data:
+            submission_data["user"] = str(submission_data["user"])
+        submission = FormSubmission.objects.create(
+            form_data=submission_data,
+            page=session.page,
+        )
+
+        if delete_session:
+            SubmissionRevision = session.get_revision_class()
+            SubmissionRevision.objects.filter(submission_id=session.id).delete()
+            session.delete()
+
+        return submission
+
+    def get_landing_page_template(self, request, *args, **kwargs):
+        return self.landing_page_template
+
+    def render_landing_page(
+        self, request, form_submission=None, *args, **kwargs
+    ):
+        """
+        Renders the landing page.
+
+        You can override this method to return a different HttpResponse as
+        landing page. E.g. you could return a redirect to a separate page.
+        """
+        context = self.get_context(request)
+        context["form_submission"] = form_submission
+        return TemplateResponse(
+            request, self.get_landing_page_template(request), context
+        )
 
     def serve(self, request, *args, **kwargs):
+        """
+        Handles all steps of serving a:
+        * Blank/empty form.
+        * Partially-filled form.
+        * Completed/finalized form.
+
+        Override this method if you'd like to customize how each step, including
+        the final submission, is processed.
+        """
         context = self.get_context(request)
         form = context["form"]
         if request.method == "POST" and form.is_valid():
             is_complete = self.steps.update_data()
             if is_complete:
-                return self.serve_success(request, *args, **kwargs)
+                self.create_final_submission(request, delete_session=True)
+                return self.render_landing_page(request, *args, **kwargs)
             return HttpResponseRedirect(self.url)
-        return super().serve(self, request, *args, **kwargs)
+        return super().serve(request, *args, **kwargs)
+
+    def serve_preview(self, request, mode_name):
+        if mode_name == "landing":
+            return self.render_landing_page(request)
+        else:
+            return super().serve_preview(request, mode_name)
+
+    def get_submissions_list_view_class(self):
+        return self.submissions_list_view_class
+
+    def serve_submissions_list_view(self, request, *args, **kwargs):
+        """
+        Returns list submissions view for admin.
+
+        `list_submissions_view_class` can be set to provide custom view class.
+        Your class must be inherited from SubmissionsListView.
+        """
+        results_only = kwargs.pop("results_only", False)
+        view = self.get_submissions_list_view_class().as_view(
+            results_only=results_only
+        )
+        return view(request, form_page=self, *args, **kwargs)
 
     def get_data_fields(self, by_step=False, add_metadata=True):
         if by_step:
-            return [
-                [
-                    (field_name, field.label)
-                    for field_name, field in step_fields.items()
-                ]
-                for step_fields in self.get_form_fields(by_step=True)
-            ]
+            stepfields = []
+            for step_fields in self.get_form_fields(by_step=True):
+                fieldtuples = []
+                for field_name, field in step_fields.items():
+                    fieldtuples.append((field_name, field.label))
+                stepfields.append(fieldtuples)
+            return stepfields
 
         data_fields = []
-        data_fields.extend(self.get_extra_data_fields())
         if add_metadata:
             data_fields.extend(
                 (
@@ -814,105 +898,18 @@ class StreamFormMixin:
                     ("last_modification", _("Last modification")),
                 )
             )
-        data_fields.extend(
-            [
-                (field_name, field_label)
-                for step_data_fields in self.get_data_fields(by_step=True)
-                for field_name, field_label in step_data_fields
-            ]
-        )
+
+        # Flatten the nested set of steps -> fields into a list of fields.
+        stepfields = []
+        for step_data_fields in self.get_data_fields(by_step=True):
+            for entry in step_data_fields:
+                stepfields.append(entry)
+
+        data_fields.extend(stepfields)
         return data_fields
-
-    def get_extra_data_fields(self):
-        return ()
-
-    def get_extra_data(self, submission, raw=False):
-        return {}
 
     def format_value(self, field, value):
         return value
-
-
-class ClosingFormMixin(Model):
-    closing_at = DateTimeField()
-
-    closed_template = None
-
-    class Meta:
-        abstract = True
-
-    @property
-    def is_closed(self):
-        return now() > self.closing_at
-
-    def get_closed_template(self, request, *args, **kwargs):
-        if self.closed_template is None:
-            template = self.get_template(request, *args, **kwargs)
-            base, ext = os.path.splitext(template)
-            return "%s_closed%s" % (base, ext)
-        return self.closed_template
-
-    def serve_closed(self, request, *args, **kwargs):
-        return TemplateResponse(
-            request,
-            self.get_closed_template(request, *args, **kwargs),
-            self.get_context(request, *args, **kwargs),
-        )
-
-    def serve(self, request, *args, **kwargs):
-        if self.is_closed:
-            return self.serve_closed(request, *args, **kwargs)
-        return super().serve(request, *args, **kwargs)
-
-
-class FormCompleteMixin:
-    def get_form_page(self):
-        return self.get_parent().specific
-
-    def serve(self, request, *args, **kwargs):
-        form_page = self.get_form_page()
-        if (
-            isinstance(form_page, LoginRequiredMixin)
-            and not request.user.is_authenticated()
-        ):
-            return HttpResponseRedirect(form_page.url)
-        self.submission = form_page.get_submission(request)
-        if (
-            self.submission is not None
-            and self.submission.is_complete
-            or getattr(request, "is_preview", False)
-        ):
-            return super().serve(request, *args, **kwargs)
-        return HttpResponseRedirect(form_page.url)
-
-    def get_context(self, *args, **kwargs):
-        context = super().get_context(*args, **kwargs)
-        if hasattr(self, "submission"):
-            context["submission"] = self.submission
-        return context
-
-
-class LoginRequiredMixin:
-    login_required_template = None
-
-    def get_login_required_template(self, request, *args, **kwargs):
-        if self.login_required_template is None:
-            template = self.get_template(request, *args, **kwargs)
-            base, ext = os.path.splitext(template)
-            return "%s_login_required%s" % (base, ext)
-        return self.login_required_template
-
-    def serve_login_required(self, request, *args, **kwargs):
-        return TemplateResponse(
-            request,
-            self.get_login_required_template(request, *args, **kwargs),
-            self.get_context(request, *args, **kwargs),
-        )
-
-    def serve(self, request, *args, **kwargs):
-        if not request.user.is_authenticated():
-            return self.serve_login_required(request, *args, **kwargs)
-        return super().serve(request, *args, **kwargs)
 
 
 class AbstractStreamForm(StreamFormMixin, AbstractForm):
