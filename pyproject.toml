@@ -19,9 +19,10 @@ classifiers = [
     "Framework :: Django",
     "Framework :: Wagtail",
     "Framework :: Wagtail :: 6",
+    "Framework :: Wagtail :: 7",
 ]
 dependencies = [
-    "wagtail>=6,<7",
+    "wagtail>=6,<8",
 ]
 description = "Wagtail StreamField-based form builder."
 dynamic = ["version"]
