@@ -76,6 +76,7 @@ class CharFieldBlock(OptionalFormFieldBlock):
 
     class Meta:
         label = _("Text field (single line)")
+        icon = "pilcrow"
 
     def get_field_class(self, struct_value):
         text_format = struct_value["format"]
@@ -95,6 +96,7 @@ class TextFieldBlock(OptionalFormFieldBlock):
 
     class Meta:
         label = _("Text field (multi line)")
+        icon = "pilcrow"
 
 
 class NumberFieldBlock(OptionalFormFieldBlock):
@@ -104,6 +106,7 @@ class NumberFieldBlock(OptionalFormFieldBlock):
 
     class Meta:
         label = _("Number field")
+        icon = "decimal"
 
 
 class CheckboxFieldBlock(FormFieldBlock):
@@ -139,7 +142,7 @@ class DropdownFieldBlock(RadioButtonsFieldBlock):
 
     class Meta:
         label = _("Dropdown field")
-        icon = "arrow-down-big"
+        icon = "list-ul"
 
     def get_field_kwargs(self, struct_value):
         kwargs = super(DropdownFieldBlock, self).get_field_kwargs(struct_value)
@@ -155,7 +158,7 @@ class CheckboxesFieldBlock(OptionalFormFieldBlock):
 
     class Meta:
         label = _("Multiple checkboxes field")
-        icon = "list-ul"
+        icon = "tasks"
 
     def get_field_kwargs(self, struct_value):
         kwargs = super(CheckboxesFieldBlock, self).get_field_kwargs(
@@ -248,7 +251,7 @@ class FileFieldBlock(OptionalFormFieldBlock):
 
     class Meta:
         label = _("File field")
-        icon = "download"
+        icon = "upload"
 
 
 class FormFieldsBlock(StreamBlock):
