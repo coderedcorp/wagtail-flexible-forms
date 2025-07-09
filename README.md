@@ -17,6 +17,6 @@ This project was [originally developed by Bertrand Bordage of NoriPyt](https://w
 
 In 2019, CodeRed used the code as part of Wagtail CRX (`coderedcms`) to and began providing ongoing maintenance as part of that package.
 
-In 2021 CodeRed took ownership of this repository, and with renewed interest from the Wagtail community, in 2025 de-vendored the code from `coderedcms` and backported the past 6 years of changes to produce a stable version of `wagtail-flexible-forms` as its own pip package.
+In 2025, with renewed interest from the Wagtail community and the Wagtail core team, CodeRed took ownership of the repository and backported the vendored code from `coderedcms` to produce a stable version of `wagtail-flexible-forms` as its own pip package.
 
-Stay tuned in 2025 as we work to add documentation, examples, and unit tests with the goal of eventually merging the package into Wagtail as the official "stream forms" implementation. It is a fantastic package and we are excited to be investing in it to share with the Wagtail community!
+Stay tuned as we work to add more documentation, examples, and unit tests with the goal of eventually merging the package into Wagtail as the official "stream forms" implementation. It is a fantastic package and we are excited to be investing in it to share with the Wagtail community!
