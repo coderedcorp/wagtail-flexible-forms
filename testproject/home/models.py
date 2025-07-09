@@ -64,6 +64,7 @@ STREAMFORM_FIELDS = [
     # Include form field blocks from wagtail_flexible_forms.
     ("sf_singleline", wff_blocks.CharFieldBlock(group="Fields")),
     ("sf_multiline", wff_blocks.TextFieldBlock(group="Fields")),
+    ("sf_number", wff_blocks.NumberFieldBlock(group="Fields")),
     ("sf_checkboxes", wff_blocks.CheckboxesFieldBlock(group="Fields")),
     ("sf_radios", wff_blocks.RadioButtonsFieldBlock(group="Fields")),
     ("sf_dropdown", wff_blocks.DropdownFieldBlock(group="Fields")),
