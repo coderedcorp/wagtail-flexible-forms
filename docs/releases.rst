@@ -2,6 +2,14 @@ Release Notes
 =============
 
 
+2.1.0
+-----
+
+Support Wagtail 7.
+
+Improve icons of field blocks when editing a page.
+
+
 2.0.1
 -----
 
