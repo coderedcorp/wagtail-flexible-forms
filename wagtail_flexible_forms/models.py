@@ -26,8 +26,8 @@ from django.utils.translation import gettext_lazy as _
 from wagtail.contrib.forms.models import AbstractEmailForm
 from wagtail.contrib.forms.models import AbstractForm
 from wagtail.contrib.forms.models import AbstractFormSubmission
+from wagtail.contrib.forms.models import FormMixin
 from wagtail.contrib.forms.models import FormSubmission
-from wagtail.contrib.forms.views import SubmissionsListView
 
 from .blocks import FormFieldBlock
 from .blocks import FormStepBlock
@@ -681,7 +681,7 @@ def create_submission_deleted_revision(sender, **kwargs):
     )
 
 
-class StreamFormMixin:
+class StreamFormMixin(FormMixin):
     """
     Adds StreamForm builder functionality to a Wagtail Page.
 
@@ -691,7 +691,11 @@ class StreamFormMixin:
     refactored into a single compatible API.
     """
 
-    submissions_list_view_class = SubmissionsListView
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from wagtail.contrib.forms.views import SubmissionsListView
+
+        self.submissions_list_view_class = SubmissionsListView
 
     preview_modes = [
         ("form", _("Form")),
@@ -854,13 +858,16 @@ class StreamFormMixin:
                 self.create_final_submission(request, delete_session=True)
                 return self.render_landing_page(request, *args, **kwargs)
             return HttpResponseRedirect(self.url)
-        return super().serve(request, *args, **kwargs)
+        return super(FormMixin, self).serve(request, *args, **kwargs)
 
     def serve_preview(self, request, mode_name):
         if mode_name == "landing":
             return self.render_landing_page(request)
         else:
-            return super().serve_preview(request, mode_name)
+            return super(FormMixin, self).serve_preview(request, mode_name)
+
+    def get_preview_context(self, request, mode_name):
+        return super(FormMixin, self).get_preview_context(request, mode_name)
 
     def get_submissions_list_view_class(self):
         return self.submissions_list_view_class
