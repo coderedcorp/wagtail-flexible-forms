@@ -19,4 +19,4 @@ Next, add the app to your Django settings. This ensures that form submissions cr
        ...,
    ]
 
-Now, you can begin `adding a form <stream-form>`_.
+Now, you can begin :doc:`adding a form <stream-form>`.
