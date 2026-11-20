@@ -1,7 +1,24 @@
 Wagtail Flexible Forms
 ======================
 
-Wagtail flexible forms provides a more robust StreamField-based form builder (sometimes called a "StreamForm") with similar functionality to `wagtail.contrib.forms`.
+Wagtail flexible forms provides a more robust StreamField-based form builder (sometimes called a "StreamForm") with similar functionality to `wagtail.contrib.forms`, plus some extra features including:
+* Intermix form fields and content (blocks).
+* Multi-step forms.
+
+
+[Documentation](https://docs.coderedcorp.com/wagtail-flexible-forms/) |
+[GitHub](https://github.com/coderedcorp/wagtail-flexible-forms) |
+[PyPI](https://pypi.org/project/wagtail-flexible-forms/) |
+[Release notes](https://docs.coderedcorp.com/wagtail-flexible-forms/releases.html)
+
+
+Status
+------
+
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/wagtail-flexible-forms)](https://pypi.org/project/wagtail-flexible-forms/)
+![PyPI - Wagtail Versions](https://img.shields.io/pypi/frameworkversions/wagtail/wagtail-flexible-forms)
+[![PyPI - Downloads](https://img.shields.io/pypi/dm/wagtail-flexible-forms)](https://pypi.org/project/wagtail-flexible-forms/)
+[![PyPI](https://img.shields.io/pypi/v/wagtail-flexible-forms)](https://pypi.org/project/wagtail-flexible-forms/)
 
 
 Installation & Usage
