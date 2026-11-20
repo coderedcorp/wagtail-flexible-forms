@@ -347,7 +347,7 @@ class AbstractSessionFormSubmission(AbstractFormSubmission):
     @staticmethod
     def get_revision_class():
         """
-        You must override this in your impelementation to return something
+        You must override this in your implementation to return something
         that inherits from ``AbstractSubmissionRevision``
         """
         return AbstractSubmissionRevision
