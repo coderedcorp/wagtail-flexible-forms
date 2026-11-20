@@ -20,9 +20,10 @@ classifiers = [
     "Framework :: Wagtail",
     "Framework :: Wagtail :: 6",
     "Framework :: Wagtail :: 7",
+    "Framework :: Wagtail :: 8",
 ]
 dependencies = [
-    "wagtail>=6,<8",
+    "wagtail>=6",
 ]
 description = "Wagtail StreamField-based form builder."
 dynamic = ["version"]
