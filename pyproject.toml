@@ -62,7 +62,7 @@ exclude = [
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "testproject.settings"
 junit_family = "xunit2"
-addopts = "--cov wagtail-flexible-forms --cov-report html --cov-report xml --junitxml junit/test-results.xml"
+addopts = "--cov wagtail_flexible_forms --cov-report html --cov-report xml --junitxml junit/test-results.xml"
 python_files = "tests.py test_*.py"
 
 [tool.ruff]
