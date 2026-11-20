@@ -27,7 +27,6 @@ from wagtail.contrib.forms.models import AbstractEmailForm
 from wagtail.contrib.forms.models import AbstractForm
 from wagtail.contrib.forms.models import AbstractFormSubmission
 from wagtail.contrib.forms.models import FormSubmission
-from wagtail.contrib.forms.views import SubmissionsListView
 
 from .blocks import FormFieldBlock
 from .blocks import FormStepBlock
@@ -691,8 +690,6 @@ class StreamFormMixin:
     refactored into a single compatible API.
     """
 
-    submissions_list_view_class = SubmissionsListView
-
     preview_modes = [
         ("form", _("Form")),
         ("landing", _("Landing page")),
@@ -861,22 +858,6 @@ class StreamFormMixin:
             return self.render_landing_page(request)
         else:
             return super().serve_preview(request, mode_name)
-
-    def get_submissions_list_view_class(self):
-        return self.submissions_list_view_class
-
-    def serve_submissions_list_view(self, request, *args, **kwargs):
-        """
-        Returns list submissions view for admin.
-
-        `list_submissions_view_class` can be set to provide custom view class.
-        Your class must be inherited from SubmissionsListView.
-        """
-        results_only = kwargs.pop("results_only", False)
-        view = self.get_submissions_list_view_class().as_view(
-            results_only=results_only
-        )
-        return view(request, form_page=self, *args, **kwargs)
 
     def get_data_fields(self, by_step=False, add_metadata=True):
         if by_step:
