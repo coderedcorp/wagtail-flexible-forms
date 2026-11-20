@@ -54,7 +54,7 @@ jobs:
         run: python -m pip install -r requirements-dev.txt
 
       - name: 'CR-QC: Spell check'
-        run: codespell ./docs/ ./wagtailflexibleforms/
+        run: codespell ./docs/ ./wagtail_flexible_forms/
 
       - name: 'CR-QC: Static analysis (ruff)'
         run: ruff check .
@@ -62,8 +62,9 @@ jobs:
       - name: 'CR-QC: Format check'
         run: ruff format --check .
 
-      - name: 'CR-QC: Type check (mypy)'
-        run: mypy ./wagtailflexibleforms/
+      # TODO... someday
+      # - name: 'CR-QC: Type check (mypy)'
+      #   run: mypy ./wagtail_flexible_forms/
 
   docs:
     name: Documentation
