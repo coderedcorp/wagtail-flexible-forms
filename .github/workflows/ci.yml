@@ -20,7 +20,10 @@ jobs:
             wagtail: "7.*"
           - python: "3.13"
             wagtail: "7.*"
-
+          - python: "3.14"
+            wagtail: "8.*"
+          - python: "3.15"
+            wagtail: "8.*"
     steps:
       - uses: actions/checkout@v7
 
@@ -48,7 +51,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.13'
+          python-version: '3.15'
 
       - name: 'CR-QC: Install from local repo'
         run: python -m pip install -r requirements-dev.txt
@@ -76,7 +79,7 @@ jobs:
 
       - uses: actions/setup-python@v7
         with:
-          python-version: '3.13'
+          python-version: '3.15'
 
       - name: 'CR-QC: Install from local repo'
         run: python -m pip install -r requirements-dev.txt
