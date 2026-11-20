@@ -20,6 +20,10 @@ jobs:
             wagtail: "7.*"
           - python: "3.13"
             wagtail: "7.*"
+          - python: "3.14"
+            wagtail: "8.*"
+          - python: "3.15"
+            wagtail: "8.*"
 
     steps:
       - uses: actions/checkout@v7
